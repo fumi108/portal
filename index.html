@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HomeLab Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f12; --bg-card: #13161b; --bg-card-hover: #1a1e26;
+    --border: rgba(255,255,255,0.06); --border-hover: rgba(255,255,255,0.14);
+    --text: #e8eaf0; --text-muted: #5a6270; --text-dim: #3a4050;
+    --green: #3ddc84; --teal: #38c9b0; --amber: #f0a030;
+    --blue: #4fa3e0; --red: #e05a5a; --purple: #9d7cf0;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--mono);
+    min-height: 100vh; padding: 40px 32px 60px;
+    max-width: 960px; margin: 0 auto;
+  }
+  header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    margin-bottom: 48px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+  }
+  .site-name { font-family: var(--sans); font-size: 26px; font-weight: 800; letter-spacing: -0.5px; line-height: 1; margin-bottom: 6px; }
+  .site-name span { color: var(--green); }
+  .site-sub { font-size: 11px; color: var(--text-muted); letter-spacing: 0.12em; text-transform: uppercase; }
+  .header-right { text-align: right; }
+  #clock { font-size: 22px; font-weight: 300; letter-spacing: 0.04em; line-height: 1; margin-bottom: 4px; }
+  #date  { font-size: 11px; color: var(--text-muted); letter-spacing: 0.08em; }
+  .status-bar { display: flex; gap: 20px; margin-bottom: 36px; flex-wrap: wrap; }
+  .status-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2.4s ease-in-out infinite; }
+  .dot.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .dot.blue  { background: var(--blue);  box-shadow: 0 0 6px var(--blue);  }
+  .dot.red   { background: var(--red);   box-shadow: 0 0 6px var(--red);   }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .section { margin-bottom: 36px; }
+  .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em; color: var(--text-dim); font-weight: 500; white-space: nowrap; }
+  .section-line { flex: 1; height: 1px; background: var(--border); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+  .card {
+    display: block; background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 18px; text-decoration: none; color: inherit;
+    transition: background .18s, border-color .18s, transform .18s;
+    position: relative; overflow: hidden;
+  }
+  .card::before {
+    content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%;
+    background: var(--accent-color, transparent); border-radius: 8px 0 0 8px;
+    opacity: 0; transition: opacity .18s;
+  }
+  .card:hover { background: var(--bg-card-hover); border-color: var(--border-hover); transform: translateY(-2px); }
+  .card:hover::before { opacity: 1; }
+  .card-icon { font-size: 18px; margin-bottom: 10px; display: block; line-height: 1; }
+  .card-name { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 4px; letter-spacing: 0.02em; }
+  .card-url  { font-size: 10px; color: var(--text-muted); letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-badge {
+    position: absolute; top: 12px; right: 12px; font-size: 9px; letter-spacing: 0.1em;
+    text-transform: uppercase; padding: 2px 6px; border-radius: 3px; font-weight: 500;
+    opacity: 0.7; background: rgba(255,255,255,0.07); color: var(--text-muted);
+  }
+  .load-error { font-size: 12px; color: var(--red); padding: 20px 0; letter-spacing: 0.04em; }
+  .prompt-line { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--text-dim); }
+  .cursor { display: inline-block; width: 8px; height: 14px; background: var(--green); opacity: 0.6; border-radius: 1px; animation: blink 1.1s step-start infinite; }
+  @keyframes blink { 50%{opacity:0} }
+  @media (max-width:520px) {
+    body { padding: 24px 16px 40px; }
+    header { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .header-right { text-align: left; }
+    .grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="site-name">home<span>lab</span></div>
+    <div class="site-sub">infrastructure portal</div>
+  </div>
+  <div class="header-right">
+    <div id="clock">--:--:--</div>
+    <div id="date">----/--/--</div>
+  </div>
+</header>
+
+<div class="status-bar" id="status-bar"></div>
+<div id="main"></div>
+
+<div class="prompt-line">
+  <span>fumi@homelab:~$</span>
+  <span class="cursor"></span>
+</div>
+
+<!-- サービス定義ファイル（編集するのはこのファイルだけ） -->
+<script src="./services.js"></script>
+
+<script>
+const ACCENT = {
+  green:'var(--green)', teal:'var(--teal)', amber:'var(--amber)',
+  blue:'var(--blue)',   red:'var(--red)',   purple:'var(--purple)',
+};
+
+// clock
+const pad = n => String(n).padStart(2,'0');
+const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function tick() {
+  const n = new Date();
+  document.getElementById('clock').textContent = `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+  document.getElementById('date').textContent  = `${n.getFullYear()}/${pad(n.getMonth()+1)}/${pad(n.getDate())} ${days[n.getDay()]}`;
+}
+tick(); setInterval(tick, 1000);
+
+// render
+function render(data) {
+  // status bar
+  document.getElementById('status-bar').innerHTML = (data.statusItems || []).map(item =>
+    `<div class="status-item"><div class="dot ${item.color !== 'green' ? item.color : ''}"></div>${item.label}</div>`
+  ).join('');
+
+  // cards
+  document.getElementById('main').innerHTML = (data.categories || []).map(cat => `
+    <div class="section">
+      <div class="section-header">
+        <div class="section-label">${cat.label}</div>
+        <div class="section-line"></div>
+      </div>
+      <div class="grid">
+        ${cat.services.map(s => {
+          const accent = ACCENT[s.accent] || 'transparent';
+          const host   = (() => { try { return new URL(s.url).host; } catch { return s.url; } })();
+          const badge  = s.badge ? `<div class="card-badge">${s.badge}</div>` : '';
+          return `<a class="card" href="${s.url}" target="_blank" style="--accent-color:${accent};">
+            ${badge}
+            <span class="card-icon">${s.icon}</span>
+            <div class="card-name">${s.name}</div>
+            <div class="card-url">${host}</div>
+          </a>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+}
+
+// services.js が読み込まれているか確認して描画
+if (typeof SERVICES !== 'undefined') {
+  render(SERVICES);
+} else {
+  document.getElementById('main').innerHTML =
+    '<div class="load-error">⚠ services.js が見つかりません。homelab-portal.html と同じフォルダに置いてください。</div>';
+}
+</script>
+</body>
+</html>
