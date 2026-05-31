@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#0d0f12"/>
+  <rect width="32" height="32" rx="6" fill="none" stroke="#38c9b0" stroke-width="1.5" opacity="0.35"/>
+  <text x="3" y="23"
+        font-family="'JetBrains Mono', 'Courier New', monospace"
+        font-size="17" font-weight="700"
+        fill="#38c9b0">&gt;_</text>
+</svg>
