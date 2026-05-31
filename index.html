@@ -239,6 +239,49 @@
     border-left: 3px solid var(--border); margin: 0 0 12px; padding: 4px 14px;
     color: var(--text-dim); font-style: italic;
   }
+  /* ── メモ編集モード ─────────────────────────────────────── */
+  .memo-edit-btn {
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text-muted); cursor: pointer; font-family: var(--mono);
+    font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 2px 8px; transition: border-color .15s, color .15s;
+  }
+  .memo-edit-btn:hover, .memo-edit-btn.active { border-color: var(--amber); color: var(--amber); }
+  .memo-textarea {
+    display: none; flex: 1;
+    background: var(--bg); border: none; border-top: 1px solid var(--border);
+    color: var(--text); font-family: var(--mono); font-size: 12px;
+    line-height: 1.7; letter-spacing: 0.02em;
+    padding: 20px 24px; resize: none; outline: none; width: 100%;
+  }
+  .memo-textarea:focus { box-shadow: inset 2px 0 0 var(--amber); }
+  .memo-edit-actions {
+    display: none; flex-shrink: 0;
+    gap: 8px; padding: 12px 16px; align-items: center;
+    border-top: 1px solid var(--border); background: var(--bg-card);
+  }
+  .memo-edit-actions.visible { display: flex; }
+  .memo-save-btn {
+    background: var(--amber); border: none; border-radius: 4px;
+    color: #0d0f12; cursor: pointer; font-family: var(--mono);
+    font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; padding: 5px 14px; transition: opacity .15s;
+  }
+  .memo-save-btn:hover { opacity: 0.85; }
+  .memo-save-btn:disabled { opacity: 0.4; cursor: default; }
+  .memo-cancel-btn {
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text-muted); cursor: pointer; font-family: var(--mono);
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 5px 12px; transition: border-color .15s, color .15s;
+  }
+  .memo-cancel-btn:hover { border-color: var(--border-hover); color: var(--text); }
+  .memo-status {
+    font-size: 10px; color: var(--text-muted); letter-spacing: 0.06em; margin-left: auto;
+    transition: color .3s;
+  }
+  .memo-status.saved { color: var(--green); }
+  .memo-status.error { color: var(--red); }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
 </head>
@@ -282,12 +325,21 @@
 
 <div id="memo-backdrop" class="memo-backdrop"></div>
 <aside id="memo-panel" class="memo-panel">
-  <div class="memo-panel-header">
+  <div class="memo-panel-header" id="memo-header">
     <span class="memo-title">// memo.md</span>
-    <button id="memo-close" class="memo-close">✕</button>
+    <div style="display:flex;align-items:center;gap:4px;">
+      <button id="memo-edit-btn" class="memo-edit-btn" title="編集 (e)">edit</button>
+      <button id="memo-close" class="memo-close">✕</button>
+    </div>
   </div>
   <div id="memo-content" class="memo-content">
     <p class="memo-empty">読み込み中…</p>
+  </div>
+  <textarea id="memo-textarea" class="memo-textarea" spellcheck="false" placeholder="# メモ&#10;&#10;ここに Markdown を書いてください…"></textarea>
+  <div id="memo-edit-actions" class="memo-edit-actions">
+    <button id="memo-save-btn" class="memo-save-btn">save</button>
+    <button id="memo-cancel-btn" class="memo-cancel-btn">cancel</button>
+    <span id="memo-status" class="memo-status"></span>
   </div>
 </aside>
 
@@ -519,13 +571,81 @@ async function loadMemo() {
   } catch { return ''; }
 }
 
+async function saveMemo(text) {
+  const res = await fetch('/memo.md', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+    body: text,
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
 function initMemo() {
-  const toggle   = document.getElementById('memo-toggle');
-  const panel    = document.getElementById('memo-panel');
-  const backdrop = document.getElementById('memo-backdrop');
-  const closeBtn = document.getElementById('memo-close');
-  const content  = document.getElementById('memo-content');
-  let loaded = false;
+  const toggle    = document.getElementById('memo-toggle');
+  const panel     = document.getElementById('memo-panel');
+  const backdrop  = document.getElementById('memo-backdrop');
+  const closeBtn  = document.getElementById('memo-close');
+  const content   = document.getElementById('memo-content');
+  const editBtn   = document.getElementById('memo-edit-btn');
+  const textarea  = document.getElementById('memo-textarea');
+  const actions   = document.getElementById('memo-edit-actions');
+  const saveBtn   = document.getElementById('memo-save-btn');
+  const cancelBtn = document.getElementById('memo-cancel-btn');
+  const statusEl  = document.getElementById('memo-status');
+
+  let loaded  = false;
+  let rawMd   = '';
+  let editing = false;
+
+  function renderMd(md) {
+    content.innerHTML = md
+      ? marked.parse(md)
+      : '<p class="memo-empty">memo.md が空です。</p>';
+  }
+
+  function setStatus(msg, type = '') {
+    statusEl.textContent = msg;
+    statusEl.className = 'memo-status' + (type ? ` ${type}` : '');
+  }
+
+  function enterEditMode() {
+    editing = true;
+    textarea.value = rawMd;
+    content.style.display  = 'none';
+    textarea.style.display = 'flex';
+    actions.classList.add('visible');
+    editBtn.classList.add('active');
+    setStatus('');
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+  }
+
+  function exitEditMode(discard = false) {
+    editing = false;
+    content.style.display  = '';
+    textarea.style.display = 'none';
+    actions.classList.remove('visible');
+    editBtn.classList.remove('active');
+    if (discard) renderMd(rawMd);
+  }
+
+  async function handleSave() {
+    const text = textarea.value;
+    saveBtn.disabled = true;
+    setStatus('saving…');
+    try {
+      await saveMemo(text);
+      rawMd = text;
+      renderMd(rawMd);
+      exitEditMode();
+      setStatus('saved', 'saved');
+      setTimeout(() => setStatus(''), 2000);
+    } catch (err) {
+      setStatus(`error: ${err.message}`, 'error');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
 
   function openPanel() {
     panel.classList.add('open');
@@ -533,14 +653,12 @@ function initMemo() {
     toggle.classList.add('active');
     if (!loaded) {
       loaded = true;
-      loadMemo().then(md => {
-        content.innerHTML = md
-          ? marked.parse(md)
-          : '<p class="memo-empty">memo.md が空です。</p>';
-      });
+      loadMemo().then(md => { rawMd = md; renderMd(md); });
     }
   }
+
   function closePanel() {
+    if (editing) exitEditMode(true);
     panel.classList.remove('open');
     backdrop.classList.remove('open');
     toggle.classList.remove('active');
@@ -551,8 +669,42 @@ function initMemo() {
   );
   closeBtn.addEventListener('click', closePanel);
   backdrop.addEventListener('click', closePanel);
+  editBtn.addEventListener('click', () => {
+    if (!loaded) return;
+    editing ? exitEditMode(true) : enterEditMode();
+  });
+  saveBtn.addEventListener('click', handleSave);
+  cancelBtn.addEventListener('click', () => exitEditMode(true));
+
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && panel.classList.contains('open')) closePanel();
+    const tag = document.activeElement.tagName;
+    const inInput = tag === 'INPUT' || tag === 'TEXTAREA';
+
+    // m: メモパネル開閉
+    if (e.key === 'm' && !inInput && !e.metaKey && !e.ctrlKey) {
+      panel.classList.contains('open') ? closePanel() : openPanel();
+      return;
+    }
+
+    if (!panel.classList.contains('open')) return;
+
+    // Cmd/Ctrl+S: 保存
+    if ((e.ctrlKey || e.metaKey) && e.key === 's' && editing) {
+      e.preventDefault();
+      handleSave();
+      return;
+    }
+
+    // Escape: 編集キャンセル or パネルを閉じる
+    if (e.key === 'Escape') {
+      editing ? exitEditMode(true) : closePanel();
+      return;
+    }
+
+    // e: 編集開始
+    if (e.key === 'e' && !inInput && !editing && loaded) {
+      enterEditMode();
+    }
   });
 }
 
