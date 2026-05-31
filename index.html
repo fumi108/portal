@@ -277,6 +277,12 @@
   }
   .memo-status.saved { color: var(--green); }
   .memo-status.error { color: var(--red); }
+  /* ── スクロールバー ─────────────────────────────── */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+  * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.12) transparent; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
 </head>
@@ -544,8 +550,8 @@ function initSearch(data) {
   // / または Cmd+K / Ctrl+K でフォーカス
   document.addEventListener('keydown', e => {
     const isMeta = e.metaKey || e.ctrlKey;
-    const memoOpen = document.getElementById('memo-section').classList.contains('open');
-    if ((e.key === '/' || (isMeta && e.key === 'k')) && document.activeElement !== input && !memoOpen) {
+    const inMemoTextarea = document.activeElement === document.getElementById('memo-textarea');
+    if ((e.key === '/' || (isMeta && e.key === 'k')) && document.activeElement !== input && !inMemoTextarea) {
       e.preventDefault();
       input.focus();
     }
