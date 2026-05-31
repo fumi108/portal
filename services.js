@@ -2,26 +2,21 @@
 //  services.js  —  HomeLab Portal 設定ファイル
 //
 //  サービスを追加・編集するときはこのファイルだけ変更してください。
-//  HTML は触らなくてOKです。
+//  HTML は触らなくてOKです。ブラウザ上の "services" ボタンからも編集できます。
 // ============================================================
 
 const SERVICES = {
-  statusItems: [
-    { label: "network online", color: "green" },
-    { label: "k3s running", color: "blue" },
-    { label: "storage 68%", color: "amber" },
-  ],
   categories: [
     {
       label: "Knowledge & Source Control",
       services: [
         {
           icon: "🟣",
-          name: "Obsidian",
-          url: "http://obsidian.local",
+          name: "Wiki",
+          url: "http://wiki.local",
           accent: "purple",
           badge: "",
-          description: "ナレッジベース・メモ管理",
+          description: "内部 Wiki",
         },
         {
           icon: "🐙",
@@ -79,7 +74,7 @@ const SERVICES = {
           url: "http://pihole.local/admin",
           accent: "red",
           badge: "DNS",
-          description: "DNS広告ブロック",
+          description: "DNS 広告ブロック",
         },
         {
           icon: "🔀",
@@ -104,11 +99,11 @@ const SERVICES = {
       services: [
         {
           icon: "🗄️",
-          name: "NAS (DXP2800)",
+          name: "NAS",
           url: "http://nas.local",
           accent: "teal",
           badge: "",
-          description: "ストレージ・ホームラボ基盤",
+          description: "ストレージ",
         },
         {
           icon: "☁️",
@@ -132,7 +127,7 @@ const SERVICES = {
           url: "http://n8n.local",
           accent: "green",
           badge: "",
-          description: "ノーコード・ワークフロー自動化",
+          description: "ワークフロー自動化",
         },
         {
           icon: "🐳",
@@ -140,7 +135,7 @@ const SERVICES = {
           url: "http://portainer.local",
           accent: "blue",
           badge: "",
-          description: "Dockerコンテナ・スタック管理GUI",
+          description: "Docker 管理 GUI",
         },
       ],
     },
