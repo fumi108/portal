@@ -277,6 +277,37 @@
   }
   .memo-status.saved { color: var(--green); }
   .memo-status.error { color: var(--red); }
+  /* ── Markdown ツールバー ─────────────────────────── */
+  .memo-toolbar {
+    display: none; position: relative;
+    gap: 2px; padding: 6px 0; align-items: center; flex-wrap: wrap;
+    border-bottom: 1px solid var(--border); margin-bottom: 8px;
+  }
+  .memo-toolbar.visible { display: flex; }
+  .tb-btn {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 4px; color: rgba(255,255,255,0.65); cursor: pointer;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+    padding: 3px 8px; transition: border-color .15s, color .15s, background .15s;
+    line-height: 1.4;
+  }
+  .tb-btn:hover { border-color: rgba(255,255,255,0.28); color: var(--text); background: rgba(255,255,255,0.10); }
+  .tb-sep { width: 1px; height: 14px; background: rgba(255,255,255,0.10); margin: 0 4px; flex-shrink: 0; }
+  .tb-help-btn { margin-left: auto; }
+  .tb-help-panel {
+    position: fixed; background: var(--bg-card); border: 1px solid var(--border-hover);
+    border-radius: 6px; padding: 10px 14px; z-index: 200;
+    font-size: 10px; color: var(--text-muted);
+    display: none; flex-direction: column; gap: 6px;
+    white-space: nowrap; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  .tb-help-panel.open { display: flex; }
+  .tb-help-row { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+  kbd {
+    background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.13);
+    border-radius: 3px; padding: 1px 6px; font-family: var(--mono);
+    font-size: 9px; color: var(--text); letter-spacing: 0.02em;
+  }
   /* ── スクロールバー ─────────────────────────────── */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -343,6 +374,32 @@
     </div>
   </div>
   <div id="memo-content" class="memo-content"></div>
+  <div id="memo-toolbar" class="memo-toolbar">
+    <button class="tb-btn" data-md="bold"      title="Bold (⌘B)"><b>B</b></button>
+    <button class="tb-btn" data-md="italic"    title="Italic (⌘I)"><i>I</i></button>
+    <button class="tb-btn" data-md="strike"    title="打ち消し線">S̶</button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn" data-md="h1"        title="見出し1">H1</button>
+    <button class="tb-btn" data-md="h2"        title="見出し2">H2</button>
+    <button class="tb-btn" data-md="h3"        title="見出し3">H3</button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn" data-md="ul"        title="リスト">•—</button>
+    <button class="tb-btn" data-md="ol"        title="番号リスト">1.</button>
+    <button class="tb-btn" data-md="quote"     title="引用">&gt;</button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn" data-md="code"      title="インラインコード">`c`</button>
+    <button class="tb-btn" data-md="codeblock" title="コードブロック">```</button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn" data-md="link"      title="リンク">link</button>
+    <button class="tb-btn" data-md="checklist" title="チェックリスト">☑</button>
+    <button class="tb-btn" data-md="table"     title="テーブル挿入">⊞</button>
+    <button class="tb-btn" data-md="tablerow"  title="行を追加（カーソルがテーブル内）">+行</button>
+    <button class="tb-btn" data-md="tablecol"  title="列を追加（カーソルがテーブル内）">+列</button>
+    <button class="tb-btn" data-md="hr"        title="水平線">—</button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn tb-help-btn" id="tb-help-btn" title="ショートカット一覧">?</button>
+    <div id="tb-help-panel" class="tb-help-panel"></div>
+  </div>
   <textarea id="memo-textarea" class="memo-textarea" spellcheck="false" placeholder="# メモ&#10;&#10;ここに Markdown を書いてください…"></textarea>
   <div id="memo-edit-actions" class="memo-edit-actions">
     <button id="memo-save-btn" class="memo-save-btn">save</button>
@@ -633,10 +690,16 @@ function initMemo() {
   const content   = document.getElementById('memo-content');
   const editBtn   = document.getElementById('memo-edit-btn');
   const textarea  = document.getElementById('memo-textarea');
+  const toolbar   = document.getElementById('memo-toolbar');
   const actions   = document.getElementById('memo-edit-actions');
   const saveBtn   = document.getElementById('memo-save-btn');
   const cancelBtn = document.getElementById('memo-cancel-btn');
   const statusEl  = document.getElementById('memo-status');
+  const helpBtn   = document.getElementById('tb-help-btn');
+  const helpPanel = document.getElementById('tb-help-panel');
+
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const K = isMac ? '⌘' : 'Ctrl';
 
   let loaded  = false;
   let rawMd   = '';
@@ -655,14 +718,137 @@ function initMemo() {
     statusEl.className = 'memo-status' + (type ? ` ${type}` : '');
   }
 
+  function getTableAtCursor() {
+    const text = textarea.value;
+    const pos  = textarea.selectionStart;
+    const allLines = text.split('\n');
+    let offset = 0, lineIdx = 0;
+    for (let i = 0; i < allLines.length; i++) {
+      if (offset + allLines[i].length >= pos) { lineIdx = i; break; }
+      offset += allLines[i].length + 1;
+    }
+    const isTable = l => /^\s*\|/.test(l);
+    if (!isTable(allLines[lineIdx])) return null;
+    let top = lineIdx, bot = lineIdx;
+    while (top > 0 && isTable(allLines[top - 1])) top--;
+    while (bot < allLines.length - 1 && isTable(allLines[bot + 1])) bot++;
+    return { allLines, top, bot };
+  }
+
+  function insertMd(type) {
+    const s = textarea.selectionStart, e = textarea.selectionEnd;
+    const sel = textarea.value.slice(s, e);
+
+    function wrap(open, close, placeholder) {
+      const text = sel || placeholder;
+      textarea.setRangeText(open + text + close, s, e, 'end');
+      textarea.selectionStart = s + open.length;
+      textarea.selectionEnd   = s + open.length + text.length;
+    }
+
+    function linePrefix(prefix) {
+      const lines = sel
+        ? sel.split('\n').map(l => prefix + l).join('\n')
+        : prefix + 'item';
+      textarea.setRangeText(lines, s, e, 'select');
+    }
+
+    function headingPrefix(level) {
+      const hashes = '#'.repeat(level) + ' ';
+      const lineStart = textarea.value.lastIndexOf('\n', s - 1) + 1;
+      const curLine = textarea.value.slice(lineStart, e);
+      const stripped = curLine.replace(/^#{1,6}\s/, '');
+      textarea.setRangeText(hashes + stripped, lineStart, e, 'end');
+    }
+
+    switch (type) {
+      case 'bold':        wrap('**', '**', 'bold');   break;
+      case 'italic':      wrap('*',  '*',  'italic'); break;
+      case 'strike':      wrap('~~', '~~', 'text');   break;
+      case 'code':        wrap('`',  '`',  'code');   break;
+      case 'h1': headingPrefix(1); break;
+      case 'h2': headingPrefix(2); break;
+      case 'h3': headingPrefix(3); break;
+      case 'ul':        linePrefix('- ');     break;
+      case 'ol':        linePrefix('1. ');    break;
+      case 'quote':     linePrefix('> ');     break;
+      case 'checklist': linePrefix('- [ ] '); break;
+      case 'codeblock': {
+        const block = sel ? `\`\`\`\n${sel}\n\`\`\`` : '```\ncode\n```';
+        const pre = textarea.value.slice(0, s);
+        const nl = pre.endsWith('\n') || pre === '' ? '' : '\n';
+        textarea.setRangeText(nl + block + '\n', s, e, 'end');
+        textarea.selectionStart = s + nl.length + 4;
+        textarea.selectionEnd   = s + nl.length + 4 + (sel ? sel.length : 4);
+        break;
+      }
+      case 'link': {
+        const text = sel || 'text';
+        textarea.setRangeText(`[${text}](url)`, s, e, 'end');
+        textarea.selectionStart = s + text.length + 3;
+        textarea.selectionEnd   = s + text.length + 6;
+        break;
+      }
+      case 'table': {
+        textarea.setRangeText('\n| 列1 | 列2 | 列3 |\n|------|------|------|\n| データ | データ | データ |\n', s, e, 'end');
+        break;
+      }
+      case 'hr': {
+        textarea.setRangeText('\n\n---\n\n', s, e, 'end');
+        break;
+      }
+      case 'tablerow': {
+        const tbl = getTableAtCursor();
+        if (!tbl) { insertMd('table'); return; }
+        const { allLines, top, bot } = tbl;
+        const colCount = (allLines[top].match(/\|/g) || []).length - 1;
+        const newRow = '| ' + Array(colCount).fill('データ').join(' | ') + ' |';
+        let botEnd = 0;
+        for (let i = 0; i <= bot; i++) botEnd += allLines[i].length + 1;
+        botEnd--;
+        textarea.setRangeText('\n' + newRow, botEnd, botEnd, 'end');
+        textarea.selectionStart = botEnd + 2;
+        textarea.selectionEnd   = botEnd + 5;
+        break;
+      }
+      case 'tablecol': {
+        const tbl = getTableAtCursor();
+        if (!tbl) return;
+        const { allLines, top, bot } = tbl;
+        const colCount = (allLines[top].match(/\|/g) || []).length - 1;
+        let pos = 0;
+        const positions = allLines.map(l => { const p = pos; pos += l.length + 1; return p; });
+        const topStart = positions[top];
+        const botEnd   = positions[bot] + allLines[bot].length;
+        const modified = allLines.slice(top, bot + 1).map((line, i) => {
+          const t = line.trimEnd();
+          if (i === 1) return t + '------|';
+          return t + ` ${i === 0 ? `列${colCount + 1}` : 'データ'} |`;
+        });
+        textarea.setRangeText(modified.join('\n'), topStart, botEnd, 'end');
+        break;
+      }
+    }
+    localStorage.setItem('memo-draft', textarea.value);
+    textarea.focus();
+  }
+
   function enterEditMode() {
     editing = true;
-    textarea.value = rawMd;
+    const draft = localStorage.getItem('memo-draft');
+    if (draft && draft !== rawMd) {
+      textarea.value = draft;
+      setStatus('下書きを復元しました', 'saved');
+      setTimeout(() => setStatus(''), 2500);
+    } else {
+      textarea.value = rawMd;
+      setStatus('');
+    }
     content.style.display  = 'none';
     textarea.style.display = 'block';
+    toolbar.classList.add('visible');
     actions.classList.add('visible');
     editBtn.classList.add('active');
-    setStatus('');
     textarea.focus();
     textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
   }
@@ -671,6 +857,7 @@ function initMemo() {
     editing = false;
     content.style.display  = '';
     textarea.style.display = 'none';
+    toolbar.classList.remove('visible');
     actions.classList.remove('visible');
     editBtn.classList.remove('active');
     if (discard) renderMd(rawMd);
@@ -685,6 +872,7 @@ function initMemo() {
       rawMd = text;
       renderMd(rawMd);
       exitEditMode();
+      localStorage.removeItem('memo-draft');
       setStatus('saved', 'saved');
       setTimeout(() => setStatus(''), 2000);
     } catch (err) {
@@ -718,7 +906,68 @@ function initMemo() {
     editing ? exitEditMode(true) : enterEditMode();
   });
   saveBtn.addEventListener('click', handleSave);
-  cancelBtn.addEventListener('click', () => exitEditMode(true));
+  cancelBtn.addEventListener('click', () => {
+    exitEditMode(true);
+    localStorage.removeItem('memo-draft');
+  });
+
+  // ── Tab キー → 2 スペースインデント ──────────────
+  textarea.addEventListener('keydown', ev => {
+    if (ev.key !== 'Tab') return;
+    ev.preventDefault();
+    const ts = textarea.selectionStart, te = textarea.selectionEnd;
+    if (ev.shiftKey) {
+      const lineStart = textarea.value.lastIndexOf('\n', ts - 1) + 1;
+      if (textarea.value.slice(lineStart, lineStart + 2) === '  ') {
+        textarea.setRangeText('', lineStart, lineStart + 2, 'preserve');
+        localStorage.setItem('memo-draft', textarea.value);
+      }
+    } else if (ts === te) {
+      textarea.setRangeText('  ', ts, te, 'end');
+      localStorage.setItem('memo-draft', textarea.value);
+    } else {
+      const lines = textarea.value.slice(ts, te).split('\n').map(l => '  ' + l).join('\n');
+      textarea.setRangeText(lines, ts, te, 'select');
+      localStorage.setItem('memo-draft', textarea.value);
+    }
+  });
+
+  // ── 下書き自動保存 ─────────────────────────────
+  textarea.addEventListener('input', () => {
+    localStorage.setItem('memo-draft', textarea.value);
+  });
+
+  // ── ヘルプボタン ──────────────────────────────
+  helpBtn.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const open = helpPanel.classList.toggle('open');
+    if (open) {
+      const r = helpBtn.getBoundingClientRect();
+      helpPanel.style.top   = (r.bottom + 6) + 'px';
+      helpPanel.style.right = (window.innerWidth - r.right) + 'px';
+    }
+  });
+  document.addEventListener('click', () => helpPanel.classList.remove('open'));
+
+  // ── ツールバー ────────────────────────────────
+  toolbar.addEventListener('click', e => {
+    const btn = e.target.closest('.tb-btn');
+    if (!btn || btn.id === 'tb-help-btn') return;
+    insertMd(btn.dataset.md);
+  });
+
+  // ── OS ごとのキー記号初期化 ───────────────────
+  document.querySelector('[data-md="bold"]').title   = `Bold (${K}B)`;
+  document.querySelector('[data-md="italic"]').title = `Italic (${K}I)`;
+  helpPanel.innerHTML = `
+    <div class="tb-help-row"><span>編集開始</span><kbd>e</kbd></div>
+    <div class="tb-help-row"><span>保存</span><kbd>${K}S</kbd></div>
+    <div class="tb-help-row"><span>キャンセル</span><kbd>Esc</kbd></div>
+    <div class="tb-help-row"><span>Bold</span><kbd>${K}B</kbd></div>
+    <div class="tb-help-row"><span>Italic</span><kbd>${K}I</kbd></div>
+    <div class="tb-help-row"><span>memo 開閉</span><kbd>m</kbd></div>
+    <div class="tb-help-row"><span>検索フォーカス</span><div style="display:flex;gap:4px;"><kbd>/</kbd><kbd>${K}K</kbd></div></div>
+  `;
 
   document.addEventListener('keydown', e => {
     const tag = document.activeElement.tagName;
@@ -739,6 +988,10 @@ function initMemo() {
       handleSave();
       return;
     }
+
+    // Cmd/Ctrl+B / I: ツールバーショートカット
+    if ((e.ctrlKey || e.metaKey) && e.key === 'b' && editing) { e.preventDefault(); insertMd('bold');   return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'i' && editing) { e.preventDefault(); insertMd('italic'); return; }
 
     // Escape: 編集キャンセルのみ（セクションは閉じない）
     if (e.key === 'Escape' && editing) {
