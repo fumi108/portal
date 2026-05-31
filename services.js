@@ -6,11 +6,6 @@
 // ============================================================
 
 const SERVICES = {
-  statusItems: [
-    { label: "network online", color: "green" },
-    { label: "k3s running", color: "blue" },
-    { label: "storage 68%", color: "amber" },
-  ],
   categories: [
     {
       label: "Knowledge & Source Control",

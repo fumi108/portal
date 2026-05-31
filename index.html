@@ -31,14 +31,6 @@
   .header-right { text-align: right; }
   #clock { font-size: 22px; font-weight: 300; letter-spacing: 0.04em; line-height: 1; margin-bottom: 4px; }
   #date  { font-size: 11px; color: var(--text-muted); letter-spacing: 0.08em; }
-  .status-bar { display: flex; gap: 20px; margin-bottom: 28px; flex-wrap: wrap; }
-  .status-item { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2.4s ease-in-out infinite; }
-  .dot.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
-  .dot.blue  { background: var(--blue);  box-shadow: 0 0 6px var(--blue);  }
-  .dot.red   { background: var(--red);   box-shadow: 0 0 6px var(--red);   }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-
   /* ── 検索行（検索バー + ビュー切替） ──────────── */
   .search-row { display: flex; gap: 10px; align-items: stretch; margin-bottom: 12px; }
   .search-row .search-wrap { flex: 1; margin-bottom: 0; }
@@ -180,8 +172,75 @@
     .header-right { text-align: left; }
     .grid { grid-template-columns: 1fr 1fr; }
     #main.list-view .card-url { display: none; }
+    .memo-panel { width: 100vw; }
+  }
+
+  /* ── メモドロワー ────────────────────────────── */
+  .memo-toggle {
+    background: none; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text-muted); cursor: pointer; font-family: var(--mono);
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 3px 9px; margin-top: 8px;
+    transition: border-color .15s, color .15s;
+  }
+  .memo-toggle:hover, .memo-toggle.active { border-color: var(--green); color: var(--green); }
+  .memo-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    opacity: 0; pointer-events: none; z-index: 199;
+    transition: opacity .25s;
+  }
+  .memo-backdrop.open { opacity: 1; pointer-events: auto; }
+  .memo-panel {
+    position: fixed; top: 0; right: 0; width: 400px; height: 100vh;
+    background: var(--bg-card); border-left: 1px solid var(--border);
+    transform: translateX(100%); transition: transform .25s ease;
+    z-index: 200; display: flex; flex-direction: column;
+  }
+  .memo-panel.open { transform: translateX(0); }
+  .memo-panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px 24px 16px; border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .memo-title { font-size: 11px; color: var(--text-muted); letter-spacing: 0.12em; }
+  .memo-close {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 14px; padding: 2px 4px; transition: color .15s;
+  }
+  .memo-close:hover { color: var(--text); }
+  .memo-content {
+    flex: 1; overflow-y: auto; padding: 24px;
+    font-size: 12px; line-height: 1.7; color: var(--text-muted);
+  }
+  .memo-empty { color: var(--text-dim); font-style: italic; }
+  /* Markdown スタイル */
+  .memo-content h1 { font-size: 15px; font-weight: 600; color: var(--text); margin: 0 0 16px; letter-spacing: 0.02em; }
+  .memo-content h2 { font-size: 12px; font-weight: 500; color: var(--text); margin: 24px 0 10px; text-transform: uppercase; letter-spacing: 0.12em; }
+  .memo-content h3 { font-size: 11px; color: var(--text-muted); margin: 16px 0 8px; letter-spacing: 0.06em; }
+  .memo-content p  { margin: 0 0 10px; }
+  .memo-content ul, .memo-content ol { padding-left: 18px; margin: 0 0 10px; }
+  .memo-content li { margin: 3px 0; }
+  .memo-content a  { color: var(--blue); text-decoration: none; }
+  .memo-content a:hover { text-decoration: underline; }
+  .memo-content code {
+    background: rgba(255,255,255,0.06); border-radius: 3px;
+    padding: 1px 5px; font-size: 11px; color: var(--green);
+  }
+  .memo-content pre {
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    border-radius: 6px; padding: 14px 16px; overflow-x: auto; margin: 0 0 12px;
+  }
+  .memo-content pre code { background: none; padding: 0; color: var(--text-muted); }
+  .memo-content hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .memo-content table { border-collapse: collapse; width: 100%; margin: 0 0 12px; font-size: 11px; }
+  .memo-content th, .memo-content td { padding: 6px 10px; border: 1px solid var(--border); text-align: left; }
+  .memo-content th { color: var(--text); background: rgba(255,255,255,0.04); }
+  .memo-content blockquote {
+    border-left: 3px solid var(--border); margin: 0 0 12px; padding: 4px 14px;
+    color: var(--text-dim); font-style: italic;
   }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
 </head>
 <body>
 
@@ -193,10 +252,9 @@
   <div class="header-right">
     <div id="clock">--:--:--</div>
     <div id="date">----/--/--</div>
+    <button id="memo-toggle" class="memo-toggle" title="メモを開く">memo</button>
   </div>
 </header>
-
-<div class="status-bar" id="status-bar"></div>
 
 <div class="search-row">
   <div class="search-wrap">
@@ -221,6 +279,17 @@
   <span>fumi@homelab:~$</span>
   <span class="cursor"></span>
 </div>
+
+<div id="memo-backdrop" class="memo-backdrop"></div>
+<aside id="memo-panel" class="memo-panel">
+  <div class="memo-panel-header">
+    <span class="memo-title">// memo.md</span>
+    <button id="memo-close" class="memo-close">✕</button>
+  </div>
+  <div id="memo-content" class="memo-content">
+    <p class="memo-empty">読み込み中…</p>
+  </div>
+</aside>
 
 <script src="./services.js"></script>
 
@@ -274,9 +343,6 @@ function cardHtml(s, query) {
 
 // ── 描画 ────────────────────────────────────────────────────
 function render(data, query = '') {
-  document.getElementById('status-bar').innerHTML = (data.statusItems || []).map(item =>
-    `<div class="status-item"><div class="dot ${item.color !== 'green' ? item.color : ''}"></div>${escHtml(item.label)}</div>`
-  ).join('');
 
   document.getElementById('main').innerHTML = (data.categories || []).map(cat => `
     <div class="section" data-category="${escHtml(cat.label)}">
@@ -444,12 +510,59 @@ function initSearch(data) {
   });
 }
 
+// ── メモドロワー ─────────────────────────────────────────────
+async function loadMemo() {
+  try {
+    const res = await fetch('./memo.md');
+    if (!res.ok) return '';
+    return await res.text();
+  } catch { return ''; }
+}
+
+function initMemo() {
+  const toggle   = document.getElementById('memo-toggle');
+  const panel    = document.getElementById('memo-panel');
+  const backdrop = document.getElementById('memo-backdrop');
+  const closeBtn = document.getElementById('memo-close');
+  const content  = document.getElementById('memo-content');
+  let loaded = false;
+
+  function openPanel() {
+    panel.classList.add('open');
+    backdrop.classList.add('open');
+    toggle.classList.add('active');
+    if (!loaded) {
+      loaded = true;
+      loadMemo().then(md => {
+        content.innerHTML = md
+          ? marked.parse(md)
+          : '<p class="memo-empty">memo.md が空です。</p>';
+      });
+    }
+  }
+  function closePanel() {
+    panel.classList.remove('open');
+    backdrop.classList.remove('open');
+    toggle.classList.remove('active');
+  }
+
+  toggle.addEventListener('click', () =>
+    panel.classList.contains('open') ? closePanel() : openPanel()
+  );
+  closeBtn.addEventListener('click', closePanel);
+  backdrop.addEventListener('click', closePanel);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && panel.classList.contains('open')) closePanel();
+  });
+}
+
 // ── エントリポイント ─────────────────────────────────────────
 if (typeof SERVICES !== 'undefined') {
   render(SERVICES);
   initCatFilter(SERVICES);
   initViewToggle();
   initSearch(SERVICES);
+  initMemo();
 } else {
   document.getElementById('main').innerHTML =
     '<div class="load-error">⚠ services.js が見つかりません。index.html と同じフォルダに置いてください。</div>';
