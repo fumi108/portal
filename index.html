@@ -552,7 +552,8 @@ function initSearch(data) {
   // / または Cmd+K / Ctrl+K でフォーカス
   document.addEventListener('keydown', e => {
     const isMeta = e.metaKey || e.ctrlKey;
-    if ((e.key === '/' || (isMeta && e.key === 'k')) && document.activeElement !== input) {
+    const memoOpen = document.getElementById('memo-panel').classList.contains('open');
+    if ((e.key === '/' || (isMeta && e.key === 'k')) && document.activeElement !== input && !memoOpen) {
       e.preventDefault();
       input.focus();
     }
