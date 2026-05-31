@@ -682,6 +682,7 @@ function initMemo() {
 
     // m: メモパネル開閉
     if (e.key === 'm' && !inInput && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
       panel.classList.contains('open') ? closePanel() : openPanel();
       return;
     }
@@ -703,6 +704,7 @@ function initMemo() {
 
     // e: 編集開始
     if (e.key === 'e' && !inInput && !editing && loaded) {
+      e.preventDefault();
       enterEditMode();
     }
   });
