@@ -283,6 +283,38 @@
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
   * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.12) transparent; }
+  /* ── services モーダル ──────────────────────────── */
+  .svc-modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    opacity: 0; pointer-events: none; z-index: 299; transition: opacity .2s;
+  }
+  .svc-modal-backdrop.open { opacity: 1; pointer-events: auto; }
+  .svc-modal {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(.97);
+    width: min(720px, 92vw); max-height: 82vh;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+    display: flex; flex-direction: column;
+    opacity: 0; pointer-events: none; z-index: 300; transition: opacity .2s, transform .2s;
+  }
+  .svc-modal.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+  .svc-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .svc-modal-title { font-size: 11px; color: var(--text-muted); letter-spacing: 0.12em; }
+  .svc-textarea {
+    flex: 1; background: var(--bg); border: none; outline: none; resize: none;
+    color: var(--text); font-family: var(--mono); font-size: 12px;
+    line-height: 1.7; padding: 16px 20px; min-height: 360px;
+  }
+  .svc-textarea:focus { box-shadow: inset 2px 0 0 var(--amber); }
+  .svc-modal-footer {
+    display: flex; gap: 8px; align-items: center;
+    padding: 12px 20px; border-top: 1px solid var(--border); flex-shrink: 0;
+  }
+  .svc-status { font-size: 10px; color: var(--text-muted); letter-spacing: 0.06em; margin-left: auto; transition: color .3s; }
+  .svc-status.saved { color: var(--green); }
+  .svc-status.error { color: var(--red); }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
 </head>
@@ -297,6 +329,7 @@
     <div id="clock">--:--:--</div>
     <div id="date">----/--/--</div>
     <button id="memo-toggle" class="memo-toggle" title="メモを開く">memo</button>
+    <button id="svc-toggle" class="memo-toggle" title="services.js を編集">services</button>
   </div>
 </header>
 
@@ -339,6 +372,20 @@
 <div class="prompt-line">
   <span>fumi@homelab:~$</span>
   <span class="cursor"></span>
+</div>
+
+<div id="svc-backdrop" class="svc-modal-backdrop"></div>
+<div id="svc-modal" class="svc-modal" role="dialog" aria-modal="true">
+  <div class="svc-modal-header">
+    <span class="svc-modal-title">// services.js</span>
+    <button id="svc-close" class="memo-close">✕</button>
+  </div>
+  <textarea id="svc-textarea" class="svc-textarea" spellcheck="false"></textarea>
+  <div class="svc-modal-footer">
+    <button id="svc-save" class="memo-save-btn">save &amp; reload</button>
+    <button id="svc-cancel" class="memo-cancel-btn">cancel</button>
+    <span id="svc-status" class="svc-status"></span>
+  </div>
 </div>
 
 <script src="./services.js"></script>
@@ -710,6 +757,78 @@ function initMemo() {
   if (localStorage.getItem('memoOpen') !== '0') openPanel();
 }
 
+// ── services.js エディタ ──────────────────────────────────────
+async function loadServicesText() {
+  const res = await fetch('./services.js');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+async function saveServices(text) {
+  const res = await fetch('/services.js', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/javascript; charset=utf-8' },
+    body: text,
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+function initServicesEditor() {
+  const toggle    = document.getElementById('svc-toggle');
+  const backdrop  = document.getElementById('svc-backdrop');
+  const modal     = document.getElementById('svc-modal');
+  const closeBtn  = document.getElementById('svc-close');
+  const textarea  = document.getElementById('svc-textarea');
+  const saveBtn   = document.getElementById('svc-save');
+  const cancelBtn = document.getElementById('svc-cancel');
+  const statusEl  = document.getElementById('svc-status');
+
+  function setStatus(msg, type = '') {
+    statusEl.textContent = msg;
+    statusEl.className = 'svc-status' + (type ? ` ${type}` : '');
+  }
+
+  function openModal() {
+    modal.classList.add('open');
+    backdrop.classList.add('open');
+    setStatus('loading…');
+    loadServicesText().then(text => {
+      textarea.value = text;
+      setStatus('');
+      textarea.focus();
+    }).catch(err => setStatus(`load error: ${err.message}`, 'error'));
+  }
+
+  function closeModal() {
+    modal.classList.remove('open');
+    backdrop.classList.remove('open');
+  }
+
+  async function handleSave() {
+    saveBtn.disabled = true;
+    setStatus('saving…');
+    try {
+      await saveServices(textarea.value);
+      setStatus('saved — reloading…', 'saved');
+      setTimeout(() => location.reload(), 800);
+    } catch (err) {
+      setStatus(`error: ${err.message}`, 'error');
+      saveBtn.disabled = false;
+    }
+  }
+
+  toggle.addEventListener('click', openModal);
+  closeBtn.addEventListener('click', closeModal);
+  backdrop.addEventListener('click', closeModal);
+  cancelBtn.addEventListener('click', closeModal);
+  saveBtn.addEventListener('click', handleSave);
+  document.addEventListener('keydown', e => {
+    if (!modal.classList.contains('open')) return;
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave(); }
+    if (e.key === 'Escape') closeModal();
+  });
+}
+
 // ── エントリポイント ─────────────────────────────────────────
 if (typeof SERVICES !== 'undefined') {
   render(SERVICES);
@@ -717,6 +836,7 @@ if (typeof SERVICES !== 'undefined') {
   initViewToggle();
   initSearch(SERVICES);
   initMemo();
+  initServicesEditor();
 } else {
   document.getElementById('main').innerHTML =
     '<div class="load-error">⚠ services.js が見つかりません。index.html と同じフォルダに置いてください。</div>';
