@@ -347,6 +347,18 @@
   .svc-status { font-size: 10px; color: var(--text-muted); letter-spacing: 0.06em; margin-left: auto; transition: color .3s; }
   .svc-status.saved { color: var(--green); }
   .svc-status.error { color: var(--red); }
+  .svc-csv-btns { display: flex; gap: 4px; }
+
+  /* ── お気に入りボタン ──────────────────────────── */
+  .card-fav {
+    position: absolute; bottom: 7px; right: 8px;
+    background: none; border: none; cursor: pointer;
+    color: var(--text-dim); font-size: 12px; line-height: 1; padding: 2px 3px;
+    opacity: 0; transition: opacity .15s, color .15s; z-index: 1;
+  }
+  .card:hover .card-fav { opacity: 0.6; }
+  .card-fav.active { opacity: 1 !important; color: var(--amber); }
+  #main.list-view .card-fav { display: none; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
 </head>
@@ -444,6 +456,10 @@
   <div class="svc-modal-footer">
     <button id="svc-save" class="memo-save-btn">save &amp; reload</button>
     <button id="svc-cancel" class="memo-cancel-btn">cancel</button>
+    <div class="svc-csv-btns">
+      <button id="svc-export-csv" class="memo-cancel-btn" title="CSVをダウンロード">↓ CSV</button>
+      <label class="memo-cancel-btn" title="CSVを読み込む" style="cursor:pointer;">↑ CSV<input id="svc-import-csv" type="file" accept=".csv" style="display:none"></label>
+    </div>
     <span id="svc-status" class="svc-status"></span>
   </div>
 </div>
@@ -479,12 +495,27 @@ function escRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 }
 
+// ── お気に入り ───────────────────────────────────────────────
+function getFavs() {
+  try { return new Set(JSON.parse(localStorage.getItem('portal-favorites') || '[]')); }
+  catch { return new Set(); }
+}
+function saveFavs(set) {
+  localStorage.setItem('portal-favorites', JSON.stringify([...set]));
+}
+function toggleFav(name) {
+  const favs = getFavs();
+  favs.has(name) ? favs.delete(name) : favs.add(name);
+  saveFavs(favs);
+}
+
 // ── カード HTML 生成 ─────────────────────────────────────────
-function cardHtml(s, query) {
+function cardHtml(s, query, isFav = false) {
   const accent = ACCENT[s.accent] || 'transparent';
   const host   = (() => { try { return new URL(s.url).host; } catch { return s.url; } })();
   const badge  = s.badge ? `<div class="card-badge">${escHtml(s.badge)}</div>` : '';
   const desc   = s.description ? `<div class="card-desc">${highlight(s.description, query)}</div>` : '';
+  const fav    = `<button class="card-fav${isFav ? ' active' : ''}" data-name="${escHtml(s.name)}" title="お気に入り">★</button>`;
   return `<a class="card" href="${s.url}" target="_blank" style="--accent-color:${accent};"
             data-name="${escHtml(s.name)}"
             data-desc="${escHtml(s.description || '')}"
@@ -495,22 +526,47 @@ function cardHtml(s, query) {
     ${desc}
     <div class="card-url">${highlight(host, query)}</div>
     ${badge}
+    ${fav}
   </a>`;
 }
 
 // ── 描画 ────────────────────────────────────────────────────
 function render(data, query = '') {
+  const favs = getFavs();
+  let html = '';
 
-  document.getElementById('main').innerHTML = (data.categories || []).map(cat => `
+  // FAVORITES セクション（1件以上ある場合のみ）
+  if (favs.size > 0) {
+    const favSvcs = [];
+    for (const cat of (data.categories || []))
+      for (const s of cat.services)
+        if (favs.has(s.name)) favSvcs.push(s);
+    if (favSvcs.length > 0) {
+      html += `
+    <div class="section" data-category="__favorites__">
+      <div class="section-header">
+        <div class="section-label">★ FAVORITES</div>
+        <div class="section-line"></div>
+      </div>
+      <div class="grid">
+        ${favSvcs.map(s => cardHtml(s, query, true)).join('')}
+      </div>
+    </div>`;
+    }
+  }
+
+  html += (data.categories || []).map(cat => `
     <div class="section" data-category="${escHtml(cat.label)}">
       <div class="section-header">
         <div class="section-label">${highlight(cat.label, query)}</div>
         <div class="section-line"></div>
       </div>
       <div class="grid">
-        ${cat.services.map(s => cardHtml(s, query)).join('')}
+        ${cat.services.map(s => cardHtml(s, query, favs.has(s.name))).join('')}
       </div>
     </div>`).join('');
+
+  document.getElementById('main').innerHTML = html;
 }
 
 // ── フィルタ状態 ─────────────────────────────────────────────
@@ -522,6 +578,21 @@ function applyFilter(query) {
 
   document.querySelectorAll('.section').forEach(section => {
     const catLabel = section.dataset.category;
+
+    // FAVORITES セクション: カテゴリフィルタ中は非表示、検索には応答
+    if (catLabel === '__favorites__') {
+      if (activeCat) { section.style.display = 'none'; return; }
+      section.querySelectorAll('.card').forEach(card => {
+        const match = !q || card.dataset.name.toLowerCase().includes(q)
+          || card.dataset.desc.toLowerCase().includes(q)
+          || card.dataset.badge.toLowerCase().includes(q)
+          || card.dataset.url.toLowerCase().includes(q);
+        card.classList.toggle('hidden', !match);
+      });
+      section.style.display = [...section.querySelectorAll('.card')].some(c => !c.classList.contains('hidden')) ? '' : 'none';
+      return;
+    }
+
     if (activeCat && catLabel !== activeCat) {
       section.style.display = 'none';
       return;
@@ -1041,6 +1112,117 @@ async function saveServices(text) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
+// ── CSV ─────────────────────────────────────────────────────
+function parseCSV(text) {
+  const rows = [];
+  let row = [], cell = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"' && text[i+1] === '"') { cell += '"'; i++; }
+      else if (c === '"') { inQ = false; }
+      else { cell += c; }
+    } else if (c === '"') {
+      inQ = true;
+    } else if (c === ',') {
+      row.push(cell); cell = '';
+    } else if (c === '\n' || (c === '\r' && text[i+1] === '\n')) {
+      if (c === '\r') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else {
+      cell += c;
+    }
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim()));
+}
+
+function generateServicesJS(data) {
+  const q = v => JSON.stringify(String(v));
+  const lines = [
+    '// ============================================================',
+    '//  services.js  —  HomeLab Portal 設定ファイル',
+    '//',
+    '//  サービスを追加・編集するときはこのファイルだけ変更してください。',
+    '//  HTML は触らなくてOKです。ブラウザ上の "services" ボタンからも編集できます。',
+    '// ============================================================',
+    '',
+    'const SERVICES = {',
+    '  categories: [',
+  ];
+  for (const cat of data.categories) {
+    lines.push('    {');
+    lines.push(`      label: ${q(cat.label)},`);
+    lines.push('      services: [');
+    for (const s of cat.services) {
+      lines.push('        {');
+      lines.push(`          icon: ${q(s.icon)},`);
+      lines.push(`          name: ${q(s.name)},`);
+      lines.push(`          url: ${q(s.url)},`);
+      lines.push(`          accent: ${q(s.accent)},`);
+      lines.push(`          badge: ${q(s.badge || '')},`);
+      lines.push(`          description: ${q(s.description || '')},`);
+      lines.push('        },');
+    }
+    lines.push('      ],');
+    lines.push('    },');
+  }
+  lines.push('  ],');
+  lines.push('};');
+  return lines.join('\n');
+}
+
+function exportCSV() {
+  const header = ['category','icon','name','url','accent','badge','description'];
+  const rows = [header];
+  for (const cat of SERVICES.categories)
+    for (const s of cat.services)
+      rows.push([cat.label, s.icon, s.name, s.url, s.accent, s.badge||'', s.description||'']);
+  const csv = rows.map(r =>
+    r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(',')
+  ).join('\r\n');
+  const blob = new Blob(['﻿' + csv], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'services.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importCSV(file, textarea, setStatus) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const text = ev.target.result.replace(/^﻿/, '');
+      const rows = parseCSV(text);
+      if (rows.length < 2) throw new Error('データ行がありません');
+      const head = rows[0].map(h => h.trim().toLowerCase());
+      const idx  = col => head.indexOf(col);
+      if (idx('name') < 0 || idx('url') < 0) throw new Error('name / url 列が必要です');
+      const catMap = new Map();
+      for (const row of rows.slice(1)) {
+        const get = col => idx(col) >= 0 ? (row[idx(col)] || '').trim() : '';
+        const cat = get('category') || 'Other';
+        if (!catMap.has(cat)) catMap.set(cat, []);
+        catMap.get(cat).push({
+          icon: get('icon') || '🔧',
+          name: get('name'),
+          url:  get('url'),
+          accent: get('accent') || 'blue',
+          badge: get('badge'),
+          description: get('description'),
+        });
+      }
+      const obj = { categories: [...catMap.entries()].map(([label, services]) => ({label, services})) };
+      textarea.value = generateServicesJS(obj);
+      setStatus('CSV 読み込み完了 — 確認後 save してください', 'saved');
+    } catch(err) {
+      setStatus(`CSV エラー: ${err.message}`, 'error');
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
 function initServicesEditor() {
   const toggle    = document.getElementById('svc-toggle');
   const backdrop  = document.getElementById('svc-backdrop');
@@ -1095,6 +1277,15 @@ function initServicesEditor() {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave(); }
     if (e.key === 'Escape') closeModal();
   });
+
+  document.getElementById('svc-export-csv').addEventListener('click', () => {
+    exportCSV();
+  });
+  document.getElementById('svc-import-csv').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) importCSV(f, textarea, setStatus);
+    e.target.value = '';
+  });
 }
 
 // ── エントリポイント ─────────────────────────────────────────
@@ -1105,6 +1296,19 @@ if (typeof SERVICES !== 'undefined') {
   initSearch(SERVICES);
   initMemo();
   initServicesEditor();
+
+  // お気に入りトグル（イベント委譲）
+  document.getElementById('main').addEventListener('click', e => {
+    const btn = e.target.closest('.card-fav');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFav(btn.dataset.name);
+    const q = document.getElementById('search').value;
+    render(SERVICES, q);
+    applyFilter(q);
+    applyViewMode();
+  });
 } else {
   document.getElementById('main').innerHTML =
     '<div class="load-error">⚠ services.js が見つかりません。index.html と同じフォルダに置いてください。</div>';
